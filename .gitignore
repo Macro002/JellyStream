@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+venv/
+ENV/
+env/
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Data files
+sites/*/data/*.json
+sites/*/data/*.csv
+sites/*/data/cookies.txt
+*.log
+
+# Progress tracking
+.structure_progress.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Credentials & Config
+*.env
+.env.*
+credentials.json
+cookies.txt
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# API keys
+api_keys.txt
+secrets.txt
+
+# Backup files
+backup/*.json
