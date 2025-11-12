@@ -45,11 +45,12 @@ class JellyfinStructureGenerator:
         self.series_data = []
         
         # === LANGUAGE SETTING (CHANGE HERE) ===
-        # Priority system: German first, then English, then German Subtitles
+        # Priority system: German audio first, then German subs, then English subs
+        # Note: Aniworld uses different wording than SerienStream
         self.LANGUAGE_PRIORITY = [
-            "Deutsch",                    # 1st priority: German audio
-            "Englisch",                   # 2nd priority: English audio  
-            "mit deutschen Untertiteln"   # 3rd priority: German subtitles
+            "Deutsch",                    # 1st priority: German audio (26,795 episodes)
+            "mit Untertitel Deutsch",     # 2nd priority: German subtitles (47,924 episodes)
+            "mit Untertitel Englisch"     # 3rd priority: English subtitles (28,718 episodes)
         ]
         
         # Alternative: Single language only (uncomment to use)
@@ -72,8 +73,8 @@ class JellyfinStructureGenerator:
             'episodes_skipped_no_language': 0,
             'movies_skipped_no_streams': 0,
             'movies_skipped_no_language': 0,
-            'episodes_by_language': {'Deutsch': 0, 'Englisch': 0, 'mit deutschen Untertiteln': 0},
-            'movies_by_language': {'Deutsch': 0, 'Englisch': 0, 'mit deutschen Untertiteln': 0},
+            'episodes_by_language': {'Deutsch': 0, 'mit Untertitel Deutsch': 0, 'mit Untertitel Englisch': 0},
+            'movies_by_language': {'Deutsch': 0, 'mit Untertitel Deutsch': 0, 'mit Untertitel Englisch': 0},
             'errors': 0,
             'last_disk_check': 0
         }

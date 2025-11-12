@@ -2,12 +2,15 @@
 """
 Manual Series Updater
 Allows manual updating of series data in the database
+Works on both code server and Jellyfin server
 """
 import json
 import sys
 import os
 from pathlib import Path
 from typing import Dict, List, Optional
+import subprocess
+import shutil
 
 # Add parent directory to path to import scrapers
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -16,11 +19,11 @@ def load_database(site: str) -> tuple:
     """Load database for a site"""
     project_root = Path(__file__).parent.parent
     db_path = project_root / f"sites/{site}/data/final_series_data.json"
-    
+
     if not db_path.exists():
         print(f"❌ Database not found: {db_path}")
         return None, None
-    
+
     try:
         with open(db_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -34,11 +37,11 @@ def search_series(data: Dict, query: str) -> List[tuple]:
     """Search for series by name"""
     query = query.lower()
     results = []
-    
+
     for idx, series in enumerate(data['series']):
         if query in series['name'].lower():
             results.append((idx, series))
-    
+
     return results
 
 def display_series_info(series: Dict):
@@ -46,29 +49,24 @@ def display_series_info(series: Dict):
     print("\n" + "="*70)
     print(f"📺 {series['name']}")
     print(f"🔗 URL: {series['url']}")
-    print(f"📅 Start Date: {series.get('start_date', 'N/A')}")
-    
+    print(f"📅 Jellyfin Name: {series.get('jellyfin_name', 'N/A')}")
+
     # Count content
     season_count = len(series.get('seasons', {}))
     episode_count = sum(len(season.get('episodes', {})) for season in series.get('seasons', {}).values())
     movie_count = len(series.get('movies', {}))
-    
+
     print(f"📊 Seasons: {season_count} | Episodes: {episode_count} | Movies: {movie_count}")
     print("="*70)
 
 def update_series_simple(site: str, series_url: str, series_name: str = "Manual Update") -> Optional[Dict]:
     """Update a series by running the scrapers directly"""
-    import subprocess
 
     site_dir = Path(__file__).parent.parent / f"sites/{site}"
     data_dir = site_dir / "data"
 
     print(f"\n🔄 Updating series from {site}...")
     print(f"📥 Fetching latest data for: {series_url}")
-
-    # Create a minimal catalog file with just this series
-    import tempfile
-    import shutil
 
     # Backup existing tmp files
     tmp_files = ['tmp_name_url.json', 'tmp_season_episode_data.json', 'tmp_episode_streams.json']
@@ -87,11 +85,11 @@ def update_series_simple(site: str, series_url: str, series_name: str = "Manual 
             "total_series": 1,
             "series": [{"name": series_name, "url": series_url}]
         }
-        
+
         catalog_path = data_dir / "tmp_name_url.json"
         with open(catalog_path, 'w', encoding='utf-8') as f:
             json.dump(catalog_data, f, indent=2)
-        
+
         # Run structure analyzer (script 2)
         print("🔍 Step 1/3: Analyzing structure...")
         result = subprocess.run(
@@ -101,12 +99,12 @@ def update_series_simple(site: str, series_url: str, series_name: str = "Manual 
             text=True,
             timeout=120
         )
-        
+
         if result.returncode != 0:
             print(f"❌ Structure analysis failed")
             print(result.stderr)
             return None
-        
+
         # Run streams analyzer (script 3)
         print("🔍 Step 2/3: Analyzing streams...")
         result = subprocess.run(
@@ -116,12 +114,12 @@ def update_series_simple(site: str, series_url: str, series_name: str = "Manual 
             text=True,
             timeout=600
         )
-        
+
         if result.returncode != 0:
             print(f"❌ Stream analysis failed")
             print(result.stderr)
             return None
-        
+
         # Run JSON structurer (script 4)
         print("🔍 Step 3/3: Structuring data...")
         result = subprocess.run(
@@ -131,12 +129,12 @@ def update_series_simple(site: str, series_url: str, series_name: str = "Manual 
             text=True,
             timeout=30
         )
-        
+
         if result.returncode != 0:
             print(f"❌ JSON structuring failed")
             print(result.stderr)
             return None
-        
+
         # Load the final structured data
         final_path = data_dir / "final_series_data.json"
         if final_path.exists():
@@ -145,10 +143,10 @@ def update_series_simple(site: str, series_url: str, series_name: str = "Manual 
                 if final_data['series']:
                     print("✅ Series data updated successfully")
                     return final_data['series'][0]
-        
+
         print("❌ No updated data found")
         return None
-        
+
     except subprocess.TimeoutExpired:
         print("❌ Update timed out")
         return None
@@ -167,7 +165,6 @@ def update_series_simple(site: str, series_url: str, series_name: str = "Manual 
 def save_database(data: Dict, db_path: Path, create_backup: bool = True):
     """Save updated database"""
     try:
-        # Ask about backup if not specified
         backup_path = db_path.with_suffix('.json.backup')
 
         if create_backup:
@@ -176,28 +173,49 @@ def save_database(data: Dict, db_path: Path, create_backup: bool = True):
                 backup_data = f.read()
             with open(backup_path, 'w', encoding='utf-8') as f:
                 f.write(backup_data)
+            print(f"💾 Backup created: {backup_path}")
 
         # Save updated data
         with open(db_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
         print(f"✅ Database saved to: {db_path}")
-        if create_backup:
-            print(f"💾 Backup created: {backup_path}")
         return True
     except Exception as e:
         print(f"❌ Error saving database: {e}")
         return False
 
-def update_jellyfin_folder(site: str, series_data: Dict) -> bool:
-    """Update a single series folder structure on Jellyfin server"""
+def update_jellyfin_structure(site: str, series_name: str) -> bool:
+    """
+    Regenerate Jellyfin folder structure for a specific series
+    Uses the 7_jellyfin_structurer.py script with series name filter
+    """
     try:
-        import subprocess
+        print(f"\n📁 Regenerating Jellyfin structure for: {series_name}")
 
-        jellyfin_name = series_data.get('jellyfin_name', series_data['name'])
-        print(f"📁 Updating Jellyfin folder for {jellyfin_name}...")
+        # Create temp JSON with just this series for structurer
+        site_dir = Path(__file__).parent.parent / f"sites/{site}"
+        data_dir = site_dir / "data"
 
-        # Remove old folder if exists
+        # Load full database
+        with open(data_dir / "final_series_data.json", 'r', encoding='utf-8') as f:
+            full_data = json.load(f)
+
+        # Find the series
+        target_series = None
+        for series in full_data['series']:
+            if series.get('jellyfin_name') == series_name or series['name'] == series_name:
+                target_series = series
+                break
+
+        if not target_series:
+            print(f"❌ Series not found in database: {series_name}")
+            return False
+
+        jellyfin_name = target_series.get('jellyfin_name', target_series['name'])
+
+        # Remove old folder on Jellyfin server
+        print(f"🗑️  Removing old folder: {jellyfin_name}")
         result = subprocess.run(
             ["ssh", "jellyfin", f"rm -rf '/media/jellyfin/{site}/{jellyfin_name}'"],
             capture_output=True,
@@ -205,72 +223,70 @@ def update_jellyfin_folder(site: str, series_data: Dict) -> bool:
         )
 
         if result.returncode == 0:
-            print(f"🗑️  Removed old: {jellyfin_name}")
+            print(f"✅ Old folder removed")
 
-        # Create base series directory
-        subprocess.run(
-            ["ssh", "jellyfin", f"mkdir -p '/media/jellyfin/{site}/{jellyfin_name}'"],
-            capture_output=True,
-            timeout=10
-        )
-        print(f"📁 Creating: {jellyfin_name}")
+        # Create temp database with just this series
+        temp_data = {
+            "series": [target_series],
+            "script": "manual_updater_structure"
+        }
 
-        # Process each season
-        for season_key, season_data in series_data.get('seasons', {}).items():
-            season_num = season_key.replace('season_', '')
-            season_dir = f"/media/jellyfin/{site}/{jellyfin_name}/Season {season_num}"
+        temp_db_path = data_dir / "temp_single_series.json"
+        with open(temp_db_path, 'w', encoding='utf-8') as f:
+            json.dump(temp_data, f, indent=2, ensure_ascii=False)
 
-            # Create season directory
-            subprocess.run(
-                ["ssh", "jellyfin", f"mkdir -p '{season_dir}'"],
+        # Run structurer script with the temp database
+        print(f"📝 Generating new structure...")
+
+        # Import and run structurer directly
+        import sys
+        sys.path.insert(0, str(site_dir))
+
+        # Backup original final file
+        final_file = data_dir / "final_series_data.json"
+        final_backup = data_dir / "final_series_data.json.temp_backup"
+        shutil.copy(final_file, final_backup)
+
+        # Temporarily replace with single series
+        shutil.copy(temp_db_path, final_file)
+
+        try:
+            # Run structurer
+            result = subprocess.run(
+                ["python3", "7_jellyfin_structurer.py", "--api-url", "http://localhost:3000/stream/redirect", "--clear-progress"],
+                cwd=site_dir,
                 capture_output=True,
-                timeout=10
+                text=True,
+                timeout=60
             )
 
-            # Process each episode
-            for ep_key, ep_data in season_data.get('episodes', {}).items():
-                ep_num = ep_key.replace('episode_', '')
+            if result.returncode == 0:
+                print(f"✅ Structure generated successfully")
+                return True
+            else:
+                print(f"❌ Structure generation failed:")
+                print(result.stderr)
+                return False
 
-                # Get best redirect (Deutsch preferred)
-                streams = ep_data.get('streams_by_language', {})
-                redirect_url = None
-
-                if 'Deutsch' in streams and streams['Deutsch']:
-                    redirect_url = streams['Deutsch'][0].get('stream_url')
-                elif streams:
-                    # Use first available language
-                    first_lang = list(streams.keys())[0]
-                    if streams[first_lang]:
-                        redirect_url = streams[first_lang][0].get('stream_url')
-
-                if redirect_url and '/redirect/' in redirect_url:
-                    redirect_id = redirect_url.split('/redirect/')[-1]
-                    api_url = f"http://localhost:3000/stream/redirect/{redirect_id}"
-
-                    strm_file = f"{season_dir}/S{int(season_num):02d}E{int(ep_num):02d}.strm"
-
-                    # Create .strm file remotely
-                    subprocess.run(
-                        ["ssh", "jellyfin", f"echo '{api_url}' > '{strm_file}'"],
-                        capture_output=True,
-                        timeout=10
-                    )
-
-        print(f"✅ Created {jellyfin_name} with all episodes")
-        return True
+        finally:
+            # Restore original database
+            shutil.copy(final_backup, final_file)
+            final_backup.unlink()
+            temp_db_path.unlink()
 
     except Exception as e:
-        print(f"❌ Error updating folder: {e}")
+        print(f"❌ Error updating structure: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
-def push_to_jellyfin(site: str, db_path: Path, series_data: Dict = None) -> bool:
-    """Push updated database to Jellyfin server and update folder structure"""
+def push_to_jellyfin(site: str, db_path: Path) -> bool:
+    """Push updated database to Jellyfin server"""
     try:
-        import subprocess
+        # Fixed path
+        jellyfin_path = f"/opt/JellyStream/sites/{site}/data/final_series_data.json"
 
-        jellyfin_path = f"/opt/jellyfin-streaming-platform/sites/{site}/data/final_series_data.json"
-
-        print(f"📤 Pushing to Jellyfin server...")
+        print(f"\n📤 Pushing database to Jellyfin server...")
         result = subprocess.run(
             ["scp", str(db_path), f"jellyfin:{jellyfin_path}"],
             capture_output=True,
@@ -281,14 +297,10 @@ def push_to_jellyfin(site: str, db_path: Path, series_data: Dict = None) -> bool
         if result.returncode == 0:
             print("✅ Database pushed to Jellyfin server")
 
-            # Update folder structure if series data provided
-            if series_data:
-                update_jellyfin_folder(site, series_data)
-
-            # Restart API
+            # Restart API with correct service name
             print("🔄 Restarting API...")
             subprocess.run(
-                ["ssh", "jellyfin", "systemctl restart streaming-api"],
+                ["ssh", "jellyfin", "systemctl restart jellystream-api"],
                 capture_output=True,
                 timeout=10
             )
@@ -302,21 +314,42 @@ def push_to_jellyfin(site: str, db_path: Path, series_data: Dict = None) -> bool
         print(f"❌ Error pushing to Jellyfin: {e}")
         return False
 
+def check_location():
+    """Check if we're running on code server or Jellyfin server"""
+    try:
+        hostname = subprocess.run(
+            ["hostname"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        ).stdout.strip()
+
+        if "jellyfin" in hostname.lower():
+            return "jellyfin"
+        else:
+            return "codeserver"
+    except:
+        return "unknown"
+
 def main():
     """Main interactive loop"""
     print("="*70)
     print("🔧 Manual Series Updater")
     print("="*70)
-    
+
+    # Detect location
+    location = check_location()
+    print(f"\n📍 Running on: {location}")
+
     # Load both databases
     print("\n📚 Loading databases...")
     serienstream_data, serienstream_path = load_database("serienstream")
     aniworld_data, aniworld_path = load_database("aniworld")
-    
+
     if not serienstream_data and not aniworld_data:
         print("❌ No databases could be loaded!")
         return
-    
+
     while True:
         print("\n" + "="*70)
         print("Select site to update:")
@@ -326,9 +359,9 @@ def main():
             print("  2. Aniworld")
         print("  0. Exit")
         print("="*70)
-        
+
         choice = input("Choice: ").strip()
-        
+
         if choice == "0":
             print("👋 Goodbye!")
             break
@@ -343,25 +376,25 @@ def main():
         else:
             print("❌ Invalid choice")
             continue
-        
+
         # Search for series
         query = input("\n🔍 Search for series: ").strip()
         if not query:
             continue
-        
+
         results = search_series(data, query)
-        
+
         if not results:
             print(f"❌ No series found matching '{query}'")
             continue
-        
+
         print(f"\n✅ Found {len(results)} result(s):")
         for i, (idx, series) in enumerate(results[:20], 1):  # Limit to 20 results
             print(f"  {i}. {series['name']}")
-        
+
         if len(results) > 20:
             print(f"  ... and {len(results)-20} more")
-        
+
         # Select series
         try:
             series_num = int(input("\nSelect series number (0 to cancel): ").strip())
@@ -370,48 +403,61 @@ def main():
             if series_num < 1 or series_num > len(results):
                 print("❌ Invalid selection")
                 continue
-            
+
             series_idx, series = results[series_num - 1]
         except ValueError:
             print("❌ Invalid input")
             continue
-        
+
         # Display series info
         display_series_info(series)
-        
+
         # Confirm update
         confirm = input("\n⚠️  Update this series? (y/n): ").strip().lower()
         if confirm != 'y':
             print("❌ Update cancelled")
             continue
 
-        # Update series
+        # Update series data
         updated_series = update_series_simple(site_name, series['url'], series['name'])
-        
-        if updated_series:
-            # Replace in database
-            data['series'][series_idx] = updated_series
-            print("✅ Series updated in database")
-            
-            # Display updated info
-            display_series_info(updated_series)
 
-            # Ask about backup
-            backup = input("\n💾 Create backup before saving? (y/n): ").strip().lower()
-            create_backup = backup == 'y'
-
-            # Save locally
-            if save_database(data, db_path, create_backup):
-                # Ask about pushing to Jellyfin
-                push = input("\n📤 Push to Jellyfin server? (y/n): ").strip().lower()
-                if push == 'y':
-                    push_to_jellyfin(site_name, db_path, updated_series)
-                else:
-                    print("💡 Run this script on Jellyfin server or manually copy the database")
-            else:
-                print("❌ Failed to save database")
-        else:
+        if not updated_series:
             print("❌ Update failed")
+            continue
+
+        # Replace in database
+        data['series'][series_idx] = updated_series
+        print("✅ Series updated in database")
+
+        # Display updated info
+        display_series_info(updated_series)
+
+        # Ask about backup
+        backup = input("\n💾 Create backup before saving? (Y/n): ").strip().lower()
+        create_backup = backup != 'n'
+
+        # Save locally
+        if not save_database(data, db_path, create_backup):
+            print("❌ Failed to save database")
+            continue
+
+        # Ask about pushing to Jellyfin (only if on code server)
+        if location == "codeserver":
+            push = input("\n📤 Push database to Jellyfin server? (y/n): ").strip().lower()
+            if push == 'y':
+                push_to_jellyfin(site_name, db_path)
+        else:
+            print("💡 Already on Jellyfin server - database updated locally")
+
+        # Ask about structure update
+        structure = input("\n📁 Update Jellyfin folder structure? (y/n): ").strip().lower()
+        if structure == 'y':
+            jellyfin_name = updated_series.get('jellyfin_name', updated_series['name'])
+            update_jellyfin_structure(site_name, jellyfin_name)
+
+        print("\n" + "="*70)
+        print("✅ Update complete!")
+        print("="*70)
 
 if __name__ == "__main__":
     try:
