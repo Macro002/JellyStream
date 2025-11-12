@@ -454,6 +454,25 @@ def main():
             print("❌ Update cancelled")
             continue
 
+        # Ask about backup BEFORE updating
+        backup = input("\n💾 Create backup before updating? (Y/n): ").strip().lower()
+        create_backup = backup != 'n'
+
+        # Create backup NOW (before any changes)
+        if create_backup:
+            backup_path = Path(str(db_path) + '.backup')
+            try:
+                import json
+                with open(backup_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False)
+                print(f"💾 Backup created: {backup_path}")
+            except Exception as e:
+                print(f"❌ Backup failed: {e}")
+                retry = input("⚠️  Continue without backup? (y/n): ").strip().lower()
+                if retry != 'y':
+                    print("❌ Update cancelled")
+                    continue
+
         # Update series data
         updated_series = update_series_simple(site_name, series['url'], series['name'])
 
@@ -468,12 +487,8 @@ def main():
         # Display updated info
         display_series_info(updated_series)
 
-        # Ask about backup
-        backup = input("\n💾 Create backup before saving? (Y/n): ").strip().lower()
-        create_backup = backup != 'n'
-
-        # Save locally
-        if not save_database(data, db_path, create_backup):
+        # Save locally (without creating another backup)
+        if not save_database(data, db_path, create_backup=False):
             print("❌ Failed to save database")
             continue
 
