@@ -39,7 +39,11 @@
       "Bash(timeout 30 python3:*)",
       "Bash(timeout 60 python3:*)",
       "Bash(GIT_SSH_COMMAND=\"ssh -i ~/.ssh/github_jellyfin -o IdentitiesOnly=yes\" git clone:*)",
-      "Bash(ssh:*)"
+      "Bash(ssh:*)",
+      "Bash(git reset:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)"
     ],
     "deny": [],
     "ask": []
