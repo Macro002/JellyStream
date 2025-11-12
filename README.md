@@ -1,25 +1,28 @@
-# Jellyfin Streaming Platform
+# JellyStream
 
-A unified platform for streaming German series and anime through Jellyfin, with automated scraping, multi-site support, and a unified streaming API.
+A unified platform for streaming German series and anime through Jellyfin, with automated scraping, multi-site support, and a streaming API backend.
 
 ## Overview
 
-This platform scrapes multiple German streaming sites for TV series and anime metadata, then integrates them into Jellyfin for a seamless streaming experience.
+JellyStream scrapes German streaming sites (SerienStream and Aniworld) for TV series and anime metadata, generates Jellyfin-compatible folder structures with .strm files, and provides a streaming API to serve the content.
 
 ### Current Status
 
-**SerienStream** (Series):
-- **10,267 series** indexed and ready for streaming
-- **253,880 episodes** + **1,603 movies**
-- **358,098 stream redirects** available
-- **Providers:** VOE (322K), Vidoza (22K), Doodstream (14K)
-- **Languages:** German (243K), English (68K), German Subs (48K)
+**SerienStream** (Series): ✅ Implemented
+- **10,276 series** indexed
+- **253,972 episodes** + **1,603 movies**
+- **Providers:** VOE, Vidoza, Doodstream
+- **Languages:** German, English, German Subs
 
-**Aniworld** (Anime) - Coming Soon:
-- Scraper structure ready to be cloned
-- Same pipeline architecture
-- **Providers:** VOE, Filemoon, Vidmoly
-- **Languages:** German, German Sub, English Sub
+**Aniworld** (Anime): ✅ Implemented
+- **2,279 series** indexed
+- **26,795 episodes** + **695 movies**
+- **Providers:** VOE, Vidoza
+- **Languages:** German (dub), German Sub, English Sub
+
+**FlareSolverr Integration**: 🚧 In Progress
+- Cloudflare bypass for protected sites
+- Currently being integrated for future-proofing
 
 ## Architecture
 
@@ -67,11 +70,12 @@ This platform scrapes multiple German streaming sites for TV series and anime me
 ## Project Structure
 
 ```
-jellyfin-streaming-platform/
+JellyStream/
 ├── README.md                  # This file
+├── SETUP.md                   # Detailed setup guide and troubleshooting
 │
 ├── sites/                     # Site-specific scrapers
-│   ├── serienstream/          # German series (10,267 series)
+│   ├── serienstream/          # German series (10,276 series)
 │   │   ├── 1_catalog_scraper.py
 │   │   ├── 2_url_season_episode_num.py
 │   │   ├── 3_language_streamurl.py
@@ -80,17 +84,14 @@ jellyfin-streaming-platform/
 │   │   ├── 6_main.py
 │   │   ├── 7_jellyfin_structurer.py
 │   │   ├── config.py         # Site-specific config
-│   │   ├── data/
-│   │   │   ├── final_series_data.json (162MB)
-│   │   │   └── tmp_*.json    # Temp pipeline files
-│   │   └── logs/             # Scraping logs
+│   │   └── data/
+│   │       └── final_series_data.json (162MB - not in git)
 │   │
-│   └── aniworld/             # Anime (coming soon)
+│   └── aniworld/             # Anime (2,279 series)
 │       ├── 1-7_*.py          # Same pipeline structure
 │       ├── config.py
-│       ├── data/
-│       │   └── final_anime_data.json
-│       └── logs/
+│       └── data/
+│           └── final_series_data.json (75MB - not in git)
 │
 ├── api/                      # Unified streaming API
 │   ├── main.py              # Flask server (multi-site support)
@@ -98,12 +99,14 @@ jellyfin-streaming-platform/
 │   ├── redirector.py        # Redirect resolver
 │   ├── providers/           # Streaming providers
 │   │   ├── voe.py          # VOE (both sites)
-│   │   ├── vidoza.py       # Vidoza
-│   │   ├── filemoon.py     # Filemoon (aniworld - TODO)
-│   │   └── vidmoly.py      # Vidmoly (aniworld - TODO)
-│   └── logs/               # API runtime logs
+│   │   └── vidoza.py       # Vidoza (both sites)
+│   └── downloader/
+│       └── voe_dl.py       # VOE direct downloader
 │
-├── utils/                   # Shared utilities (TODO: restore manual_updater)
+├── utils/                   # Shared utilities
+│   └── manual_updater.py   # Interactive CLI for updating series
+│
+├── backup/                  # Database backups (not in git)
 │
 └── docs/                    # Documentation
     ├── TODO.md             # Project roadmap
@@ -155,12 +158,12 @@ Located in `api/`:
 **SerienStream Library:**
 - Media directory: `/media/jellyfin/serienstream/`
 - Structure: `Series Name (Year)/Season XX/Episode.strm`
-- .strm files point to: `http://192.168.1.153:3000/stream/redirect/[id]`
+- .strm files point to: `http://localhost:3000/stream/redirect/[id]`
 
-**Aniworld Library** (Coming Soon):
+**Aniworld Library:**
 - Media directory: `/media/jellyfin/aniworld/`
 - Structure: `Anime Name (Year)/Season XX/Episode.strm`
-- Same API endpoint, different redirect IDs
+- .strm files point to: `http://localhost:3000/stream/redirect/[id]`
 
 **Stack Overflow Fix:**
 For large libraries (8,000+ series), apply Jellyfin stack fix:
@@ -427,11 +430,15 @@ tail -f api/logs/streaming_api.log
 
 See [docs/TODO.md](docs/TODO.md) for detailed roadmap.
 
-**Next Up:**
-- Aniworld integration (anime support)
+**In Progress:**
+- FlareSolverr integration for Cloudflare bypass
+- Jellyfin LXC rebuild with proper localhost configuration
+
+**Planned:**
 - Additional providers (Filemoon, Vidmoly, Streamtape)
-- Automatic daily updates
+- Automatic daily updates (cron jobs)
 - Web dashboard for monitoring
+- Stream health checking and auto-updates
 
 ## License
 
