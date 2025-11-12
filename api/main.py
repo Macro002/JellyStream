@@ -116,11 +116,17 @@ def _cache_season_background(season_episodes, skip_redirect_id, season_lock_key)
             try:
                 # Small delay to avoid overwhelming providers
                 time.sleep(2)
-                
+
                 logging.info(f"🔄 Background caching: {redirect_id}")
-                
-                # Resolve this episode
-                redirect_url = f"https://serienstream.to/redirect/{redirect_id}"
+
+                # Get episode info to determine site
+                ep_info = data_loader.find_episode_by_redirect(redirect_id)
+                if not ep_info:
+                    continue
+
+                # Build correct redirect URL based on source site
+                source_site = ep_info.get('source_site', 'serienstream')
+                redirect_url = f"https://{source_site}.to/redirect/{redirect_id}"
                 provider_url = redirect_resolver.resolve_redirect(redirect_url)
                 
                 if provider_url:
@@ -160,8 +166,9 @@ def stream_direct(redirect_id):
             if not episode_info:
                 return jsonify({"error": f"Redirect ID {redirect_id} not found"}), 404
 
-            # Get provider URL
-            redirect_url = f"https://serienstream.to/redirect/{redirect_id}"
+            # Get provider URL using correct source site
+            source_site = episode_info.get('source_site', 'serienstream')
+            redirect_url = f"https://{source_site}.to/redirect/{redirect_id}"
             provider_url = redirect_resolver.resolve_redirect(redirect_url)
 
             if not provider_url:
@@ -212,10 +219,11 @@ def stream_redirect(redirect_id):
             if not episode_info:
                 logging.warning(f"❌ Redirect ID {redirect_id} not found in data")
                 return jsonify({'error': 'Redirect ID not found'}), 404
-            
-            # Resolve redirect to get provider URL
-            redirect_url = f"https://serienstream.to/redirect/{redirect_id}"
-            logging.info(f"🔍 Resolving {redirect_id} for {episode_info['series_name']} S{episode_info['season_num']}E{episode_info['episode_num']}")
+
+            # Resolve redirect to get provider URL using correct source site
+            source_site = episode_info.get('source_site', 'serienstream')
+            redirect_url = f"https://{source_site}.to/redirect/{redirect_id}"
+            logging.info(f"🔍 Resolving {redirect_id} ({source_site}) for {episode_info['series_name']} S{episode_info['season_num']}E{episode_info['episode_num']}")
             
             # Step 1: Get the direct provider URL
             provider_url = redirect_resolver.resolve_redirect(redirect_url)
@@ -351,9 +359,13 @@ def redirect_info(redirect_id):
 def test_redirect(redirect_id):
     """Test redirect resolution without caching (for debugging)"""
     try:
-        redirect_url = f"https://serienstream.to/redirect/{redirect_id}"
-        logging.info(f"🧪 Testing redirect resolution for {redirect_id}")
-        
+        # Get episode info to determine source site
+        episode_info = data_loader.find_episode_by_redirect(redirect_id)
+        source_site = episode_info.get('source_site', 'serienstream') if episode_info else 'serienstream'
+
+        redirect_url = f"https://{source_site}.to/redirect/{redirect_id}"
+        logging.info(f"🧪 Testing redirect resolution for {redirect_id} ({source_site})")
+
         # Step 1: Resolve redirect
         provider_url = redirect_resolver.resolve_redirect(redirect_url)
         if not provider_url:
