@@ -251,14 +251,44 @@ def update_jellyfin_structure(site: str, series_name: str) -> bool:
         shutil.copy(temp_db_path, final_file)
 
         try:
-            # Run structurer
-            result = subprocess.run(
-                ["python3", "7_jellyfin_structurer.py", "--api-url", "http://localhost:3000/stream/redirect", "--clear-progress"],
-                cwd=site_dir,
-                capture_output=True,
-                text=True,
-                timeout=60
-            )
+            # Check if we're on Jellyfin or code server
+            location = check_location()
+
+            if location == "jellyfin":
+                # Run locally on Jellyfin server
+                result = subprocess.run(
+                    ["python3", "7_jellyfin_structurer.py", "--api-url", "http://localhost:3000/stream/redirect", "--clear-progress"],
+                    cwd=site_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+            else:
+                # Push temp database to Jellyfin first
+                temp_jellyfin_path = f"/opt/JellyStream/sites/{site}/data/temp_single_series.json"
+                result = subprocess.run(
+                    ["scp", str(temp_db_path), f"jellyfin:{temp_jellyfin_path}"],
+                    capture_output=True,
+                    timeout=30
+                )
+
+                if result.returncode != 0:
+                    print(f"❌ Failed to copy temp database to Jellyfin")
+                    return False
+
+                # Run structurer on Jellyfin server via SSH
+                result = subprocess.run(
+                    ["ssh", "jellyfin",
+                     f"cd /opt/JellyStream/sites/{site} && "
+                     f"cp data/final_series_data.json data/final_series_data.json.temp_backup && "
+                     f"cp data/temp_single_series.json data/final_series_data.json && "
+                     f"python3 7_jellyfin_structurer.py --api-url http://localhost:3000/stream/redirect --clear-progress && "
+                     f"cp data/final_series_data.json.temp_backup data/final_series_data.json && "
+                     f"rm data/final_series_data.json.temp_backup data/temp_single_series.json"],
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
 
             if result.returncode == 0:
                 print(f"✅ Structure generated successfully")
@@ -269,10 +299,16 @@ def update_jellyfin_structure(site: str, series_name: str) -> bool:
                 return False
 
         finally:
-            # Restore original database
-            shutil.copy(final_backup, final_file)
-            final_backup.unlink()
-            temp_db_path.unlink()
+            # Restore original database (only on code server)
+            if check_location() == "codeserver":
+                shutil.copy(final_backup, final_file)
+                final_backup.unlink()
+                temp_db_path.unlink()
+            else:
+                # Clean up temp files on Jellyfin
+                shutil.copy(final_backup, final_file)
+                final_backup.unlink()
+                temp_db_path.unlink()
 
     except Exception as e:
         print(f"❌ Error updating structure: {e}")
