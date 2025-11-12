@@ -1,79 +1,12 @@
-# Python
+# Python cache
 __pycache__/
-*/__pycache__/
 **/__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-venv/
-ENV/
-env/
 
-# Database files
-*.db
-*.db-shm
-*.db-wal
-*.sqlite
-*.sqlite3
-
-# Data files
-sites/*/data/*.json
-sites/*/data/*.csv
-sites/*/data/cookies.txt
+# IDE
+.claude/
 
 # Logs
 *.log
-logs/
-**/logs/
-*.log.*
 
-# Progress tracking
-.structure_progress.json
-
-# IDE
-.vscode/
-.idea/
-.claude/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Credentials & Config
-*.env
-.env.*
-credentials.json
-cookies.txt
-
-# Temporary files
-*.tmp
-*.temp
-temp/
-tmp/
-
-# API keys
-api_keys.txt
-secrets.txt
-
-# Backup files
-backup/*.json
+# Data files (too large for GitHub)
+sites/*/data/*.json
