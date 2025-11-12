@@ -5,8 +5,6 @@ __pycache__/
 # IDE
 .claude/
 
-# Logs
+# Logs (ignore log files but keep folder structure)
 *.log
-
-# Data files (too large for GitHub)
-sites/*/data/*.json
+!.gitkeep
