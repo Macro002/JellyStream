@@ -1,5 +1,7 @@
 # Python
 __pycache__/
+*/__pycache__/
+**/__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -35,7 +37,12 @@ env/
 sites/*/data/*.json
 sites/*/data/*.csv
 sites/*/data/cookies.txt
+
+# Logs
 *.log
+logs/
+**/logs/
+*.log.*
 
 # Progress tracking
 .structure_progress.json
@@ -43,6 +50,7 @@ sites/*/data/cookies.txt
 # IDE
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~

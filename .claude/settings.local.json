@@ -38,7 +38,8 @@
       "Bash(tree:*)",
       "Bash(timeout 30 python3:*)",
       "Bash(timeout 60 python3:*)",
-      "Bash(GIT_SSH_COMMAND=\"ssh -i ~/.ssh/github_jellyfin -o IdentitiesOnly=yes\" git clone:*)"
+      "Bash(GIT_SSH_COMMAND=\"ssh -i ~/.ssh/github_jellyfin -o IdentitiesOnly=yes\" git clone:*)",
+      "Bash(ssh:*)"
     ],
     "deny": [],
     "ask": []
