@@ -8,3 +8,5 @@ __pycache__/
 # Logs (ignore log files but keep folder structure)
 *.log
 !.gitkeep
+
+*.updater_backup
