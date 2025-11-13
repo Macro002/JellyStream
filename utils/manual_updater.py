@@ -386,6 +386,9 @@ def main():
         print("❌ No databases could be loaded!")
         return
 
+    # Collect series to update
+    series_to_update = []  # List of (site_name, data, db_path, series_idx, series)
+
     while True:
         print("\n" + "="*70)
         print("Select site to update:")
@@ -448,67 +451,116 @@ def main():
         # Display series info
         display_series_info(series)
 
-        # Confirm update
-        confirm = input("\n⚠️  Update this series? (y/n): ").strip().lower()
-        if confirm != 'y':
-            print("❌ Update cancelled")
-            continue
+        # Ask to add to list
+        add = input("\n➕ Add this series to update list? (y/n): ").strip().lower()
+        if add == 'y':
+            series_to_update.append((site_name, data, db_path, series_idx, series))
+            print(f"✅ Added to list ({len(series_to_update)} series total)")
 
-        # Ask about backup BEFORE updating
-        backup = input("\n💾 Create backup before updating? (Y/n): ").strip().lower()
-        create_backup = backup != 'n'
+            # Show all series in list
+            print("\n📋 Series to update:")
+            for i, (s_site, s_data, s_path, s_idx, s_series) in enumerate(series_to_update, 1):
+                print(f"  {i}. [{s_site}] {s_series['name']}")
 
-        # Create backup NOW (before any changes)
-        if create_backup:
-            backup_path = Path(str(db_path) + '.backup')
-            try:
-                import json
-                with open(backup_path, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False)
-                print(f"💾 Backup created: {backup_path}")
-            except Exception as e:
-                print(f"❌ Backup failed: {e}")
-                retry = input("⚠️  Continue without backup? (y/n): ").strip().lower()
-                if retry != 'y':
-                    print("❌ Update cancelled")
-                    continue
+        # Ask to add another
+        another = input("\n➕ Add another series? (y/n): ").strip().lower()
+        if another != 'y':
+            break
+
+    # Exit if no series selected
+    if not series_to_update:
+        print("👋 No series selected. Goodbye!")
+        return
+
+    # Show final list
+    print("\n" + "="*70)
+    print(f"📋 FINAL UPDATE LIST ({len(series_to_update)} series):")
+    print("="*70)
+    for i, (s_site, s_data, s_path, s_idx, s_series) in enumerate(series_to_update, 1):
+        print(f"\n{i}. [{s_site.upper()}]")
+        display_series_info(s_series)
+
+    # Confirm batch update
+    confirm = input("\n⚠️  Update all these series? (y/n): ").strip().lower()
+    if confirm != 'y':
+        print("❌ Update cancelled")
+        return
+
+    # Ask about backup BEFORE updating
+    backup = input("\n💾 Create backup before updating? (Y/n): ").strip().lower()
+    create_backup = backup != 'n'
+
+    # Create backups NOW (before any changes) - one per database
+    backups_created = {}
+    if create_backup:
+        for site_name, data, db_path, _, _ in series_to_update:
+            if db_path not in backups_created:
+                backup_path = Path(str(db_path) + '.backup')
+                try:
+                    with open(backup_path, 'w', encoding='utf-8') as f:
+                        json.dump(data, f, indent=2, ensure_ascii=False)
+                    backups_created[db_path] = backup_path
+                    print(f"💾 Backup created: {backup_path}")
+                except Exception as e:
+                    print(f"❌ Backup failed: {e}")
+                    retry = input("⚠️  Continue without backup? (y/n): ").strip().lower()
+                    if retry != 'y':
+                        print("❌ Update cancelled")
+                        return
+
+    # Process each series
+    print("\n" + "="*70)
+    print("🔄 Starting batch update...")
+    print("="*70)
+
+    updated_series_list = []
+    for i, (site_name, data, db_path, series_idx, series) in enumerate(series_to_update, 1):
+        print(f"\n[{i}/{len(series_to_update)}] Updating: {series['name']}")
 
         # Update series data
         updated_series = update_series_simple(site_name, series['url'], series['name'])
 
         if not updated_series:
-            print("❌ Update failed")
+            print(f"❌ Update failed for: {series['name']}")
             continue
 
         # Replace in database
         data['series'][series_idx] = updated_series
-        print("✅ Series updated in database")
+        print(f"✅ Updated: {series['name']}")
+        updated_series_list.append((site_name, data, db_path, updated_series))
 
-        # Display updated info
-        display_series_info(updated_series)
+    # Save all databases
+    print("\n" + "="*70)
+    print("💾 Saving databases...")
+    print("="*70)
 
-        # Save locally (without creating another backup)
-        if not save_database(data, db_path, create_backup=False):
-            print("❌ Failed to save database")
-            continue
+    saved_dbs = {}
+    for site_name, data, db_path, updated_series in updated_series_list:
+        if db_path not in saved_dbs:
+            if save_database(data, db_path, create_backup=False):
+                saved_dbs[db_path] = (site_name, data, db_path)
 
-        # Ask about pushing to Jellyfin (only if on code server)
-        if location == "codeserver":
-            push = input("\n📤 Push database to Jellyfin server? (y/n): ").strip().lower()
-            if push == 'y':
-                push_to_jellyfin(site_name, db_path)
-        else:
-            print("💡 Already on Jellyfin server - database updated locally")
+    # Ask about pushing to Jellyfin (only if on code server)
+    if location == "codeserver" and saved_dbs:
+        push = input("\n📤 Push databases to Jellyfin server? (y/n): ").strip().lower()
+        if push == 'y':
+            for db_path, (site_name, data, path) in saved_dbs.items():
+                push_to_jellyfin(site_name, path)
+    elif saved_dbs:
+        print("💡 Already on Jellyfin server - databases updated locally")
 
-        # Ask about structure update
-        structure = input("\n📁 Update Jellyfin folder structure? (y/n): ").strip().lower()
-        if structure == 'y':
+    # Ask about structure update
+    structure = input("\n📁 Update Jellyfin folder structures? (y/n): ").strip().lower()
+    if structure == 'y':
+        print("\n🔄 Updating Jellyfin structures...")
+        for site_name, data, db_path, updated_series in updated_series_list:
             jellyfin_name = updated_series.get('jellyfin_name', updated_series['name'])
+            print(f"\n📁 {jellyfin_name}...")
             update_jellyfin_structure(site_name, jellyfin_name)
 
-        print("\n" + "="*70)
-        print("✅ Update complete!")
-        print("="*70)
+    print("\n" + "="*70)
+    print(f"✅ Batch update complete! ({len(updated_series_list)}/{len(series_to_update)} succeeded)")
+    print("="*70)
 
 if __name__ == "__main__":
     try:
