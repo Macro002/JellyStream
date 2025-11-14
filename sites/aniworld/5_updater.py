@@ -262,6 +262,41 @@ class AniworldEpisodeUpdater:
                 return idx, series
         return None, None
 
+    def scrape_new_series(self, series_url: str, series_name: str) -> Dict:
+        """
+        Scrape a completely new series that doesn't exist in database yet
+
+        Args:
+            series_url: Full URL to series page
+            series_name: Name of the series
+
+        Returns:
+            New series dict with basic structure
+        """
+        try:
+            response = self.session.get(series_url, timeout=30)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, 'html.parser')
+
+            # Extract series info from page
+            series_data = {
+                'name': series_name,
+                'url': series_url,
+                'seasons': {},
+                'movies': {},
+                'total_episodes': 0,
+                'season_count': 0,
+                'episode_counts': [],
+                'jellyfin_name': series_name
+            }
+
+            logging.info(f"➕ Adding new series to database: {series_name}")
+            return series_data
+
+        except Exception as e:
+            logging.error(f"❌ Error scraping new series {series_url}: {e}")
+            return None
+
     def update_episode_in_db(self, db: Dict, episode_info: Dict, streams_data: Dict) -> Tuple[bool, bool]:
         """
         Update or add a single episode in the database with new stream data
@@ -277,8 +312,17 @@ class AniworldEpisodeUpdater:
         # Find series
         series_idx, series = self.find_series_in_db(db, episode_info['series_url'])
 
+        # If series doesn't exist, add it
         if series_idx is None:
-            return False, False
+            new_series = self.scrape_new_series(episode_info['series_url'], episode_info['series_name'])
+            if not new_series:
+                return False, False
+
+            # Add to database
+            db['series'].append(new_series)
+            series_idx = len(db['series']) - 1
+            series = new_series
+            logging.info(f"✅ Added new series: {episode_info['series_name']}")
 
         # Track this series for structure regeneration
         self.updated_series.add(episode_info['series_url'])
@@ -452,8 +496,11 @@ class AniworldEpisodeUpdater:
         # Step 4: Update each episode
         updated_count = 0
         new_episode_count = 0
-        not_found_count = 0
+        new_series_count = 0
         failed_count = 0
+
+        # Track series count before updates
+        initial_series_count = len(db['series'])
 
         print(f"\nProcessing {len(unique_episodes)} episodes...", flush=True)
 
@@ -478,12 +525,15 @@ class AniworldEpisodeUpdater:
                     updated_count += 1
                     if is_new:
                         new_episode_count += 1
-                        print(f"\n➕ New: {series_name} S{s:02d}E{e:02d} ({streams_data['total_streams']} streams)", flush=True)
+                        print(f"\n➕ New episode: {series_name} S{s:02d}E{e:02d} ({streams_data['total_streams']} streams)", flush=True)
                 else:
-                    not_found_count += 1
+                    failed_count += 1
 
             # Small delay to avoid hammering the server
             time.sleep(2)
+
+        # Calculate how many new series were added
+        new_series_count = len(db['series']) - initial_series_count
 
         print()  # New line after progress
 
@@ -499,10 +549,10 @@ class AniworldEpisodeUpdater:
         logging.info("\n" + "="*70)
         logging.info("🎉 UPDATE COMPLETE")
         logging.info(f"   ✅ Updated: {updated_count} episodes ({new_episode_count} new)")
+        if new_series_count > 0:
+            logging.info(f"   📺 New series added: {new_series_count}")
         if updated_count > 0:
             logging.info(f"   📁 Regenerated: {regenerated_series} series structures")
-        if not_found_count > 0:
-            logging.info(f"   ⚠️  Not found in DB: {not_found_count} episodes")
         if failed_count > 0:
             logging.info(f"   ❌ Failed (no streams): {failed_count} episodes")
         logging.info(f"   ⏱️  Duration: {duration/60:.1f} minutes")

@@ -511,7 +511,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description='Generate Jellyfin structure for serienstream data')
-    parser.add_argument('--api-url', default='http://192.168.1.153:3000/stream/redirect')
+    parser.add_argument('--api-url', default='http://localhost:3000/stream/redirect')
     parser.add_argument('--limit', type=int, help='Limit series to process')
     parser.add_argument('-b', type=int, default=1000, help='Batch size (default: 1000)')
     parser.add_argument('--wait', type=int, default=0, help='Wait minutes between series')
