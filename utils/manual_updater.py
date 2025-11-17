@@ -562,9 +562,134 @@ def main():
     print(f"✅ Batch update complete! ({len(updated_series_list)}/{len(series_to_update)} succeeded)")
     print("="*70)
 
+def plugin_mode():
+    """Plugin mode - accepts command line arguments for non-interactive use"""
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Manual Series Updater - Plugin Mode')
+    parser.add_argument('--plugin', action='store_true', help='Enable plugin mode (non-interactive)')
+    parser.add_argument('--site', choices=['aniworld', 'serienstream'], required=True, help='Site name')
+    parser.add_argument('--series-name', required=True, help='Series jellyfin_name or name to update')
+    parser.add_argument('--list-series', action='store_true', help='List all series as JSON')
+    parser.add_argument('--search', help='Search for series (returns JSON)')
+    parser.add_argument('--json', action='store_true', help='Output as JSON for plugin consumption')
+
+    args = parser.parse_args()
+
+    if not args.plugin:
+        # Not in plugin mode, run interactive
+        main()
+        return
+
+    # Plugin mode - handle commands
+    try:
+        # Load database
+        data, db_path = load_database(args.site)
+        if not data:
+            if args.json:
+                print(json.dumps({"success": False, "error": "Database not found"}))
+            else:
+                print(f"❌ Database not found for {args.site}")
+            sys.exit(1)
+
+        # Handle list command
+        if args.list_series:
+            series_list = []
+            for idx, series in enumerate(data['series']):
+                series_list.append({
+                    "name": series['name'],
+                    "jellyfin_name": series.get('jellyfin_name', series['name']),
+                    "url": series['url'],
+                    "season_count": len(series.get('seasons', {})),
+                    "episode_count": sum(len(season.get('episodes', {})) for season in series.get('seasons', {}).values())
+                })
+            print(json.dumps({"success": True, "series": series_list}))
+            return
+
+        # Handle search command
+        if args.search:
+            results = search_series(data, args.search)
+            series_list = []
+            for idx, series in results[:50]:  # Limit to 50 results
+                series_list.append({
+                    "name": series['name'],
+                    "jellyfin_name": series.get('jellyfin_name', series['name']),
+                    "url": series['url'],
+                    "season_count": len(series.get('seasons', {})),
+                    "episode_count": sum(len(season.get('episodes', {})) for season in series.get('seasons', {}).values())
+                })
+            print(json.dumps({"success": True, "count": len(results), "series": series_list}))
+            return
+
+        # Handle update command
+        # Find series
+        target_series = None
+        series_idx = -1
+        for idx, series in enumerate(data['series']):
+            jellyfin_name = series.get('jellyfin_name', series['name'])
+            if jellyfin_name == args.series_name or series['name'] == args.series_name:
+                target_series = series
+                series_idx = idx
+                break
+
+        if not target_series:
+            if args.json:
+                print(json.dumps({"success": False, "error": f"Series not found: {args.series_name}"}))
+            else:
+                print(f"❌ Series not found: {args.series_name}")
+            sys.exit(1)
+
+        # Update the series
+        if args.json:
+            print(json.dumps({"success": True, "message": f"Starting update for {args.series_name}"}))
+
+        updated_series = update_series_simple(args.site, target_series['url'], target_series['name'])
+
+        if not updated_series:
+            if args.json:
+                print(json.dumps({"success": False, "error": "Update failed"}))
+            sys.exit(1)
+
+        # Replace in database
+        data['series'][series_idx] = updated_series
+
+        # Save database
+        if not save_database(data, db_path, create_backup=True):
+            if args.json:
+                print(json.dumps({"success": False, "error": "Failed to save database"}))
+            sys.exit(1)
+
+        # Update Jellyfin structure
+        jellyfin_name = updated_series.get('jellyfin_name', updated_series['name'])
+        if not update_jellyfin_structure(args.site, jellyfin_name):
+            if args.json:
+                print(json.dumps({"success": False, "error": "Failed to regenerate .strm files"}))
+            sys.exit(1)
+
+        # Success
+        if args.json:
+            episode_count = sum(len(season.get('episodes', {})) for season in updated_series.get('seasons', {}).values())
+            print(json.dumps({
+                "success": True,
+                "series": args.series_name,
+                "episodes": episode_count,
+                "message": f"Successfully updated {args.series_name}"
+            }))
+        else:
+            print(f"✅ Successfully updated {args.series_name}")
+
+    except Exception as e:
+        if args.json:
+            print(json.dumps({"success": False, "error": str(e)}))
+        else:
+            print(f"❌ Error: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
 if __name__ == "__main__":
     try:
-        main()
+        plugin_mode()
     except KeyboardInterrupt:
         print("\n\n👋 Interrupted by user")
         sys.exit(0)

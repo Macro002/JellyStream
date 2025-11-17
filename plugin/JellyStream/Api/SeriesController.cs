@@ -1,12 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
+using System.Diagnostics;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace Jellyfin.Plugin.JellyStream.Api;
@@ -22,73 +19,76 @@ public class SeriesController : ControllerBase
         _logger = logger;
     }
 
-    [HttpGet("List")]
-    public async Task<ActionResult<List<SeriesInfo>>> GetSeriesList([FromQuery] string site = "aniworld")
+    [HttpGet("Search")]
+    public async Task<ActionResult<List<SeriesInfo>>> SearchSeries(
+        [FromQuery] string site = "aniworld",
+        [FromQuery] string query = "")
     {
         try
         {
-            var config = Plugin.Instance?.Configuration;
-            if (config == null)
+            _logger.LogInformation("Searching for series: {Query} on {Site}", query, site);
+
+            var psi = new ProcessStartInfo
             {
-                return BadRequest("Plugin not configured");
+                FileName = "python3",
+                Arguments = $"/opt/JellyStream/utils/manual_updater.py --plugin --site {site} --search \"{query}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(psi);
+            if (process == null)
+            {
+                return StatusCode(500, "Failed to start manual_updater.py");
             }
 
-            string dataPath = site.ToLower() == "aniworld"
-                ? config.AniworldDataPath
-                : config.SerienstreamDataPath;
+            var output = await process.StandardOutput.ReadToEndAsync();
+            var error = await process.StandardError.ReadToEndAsync();
 
-            if (!System.IO.File.Exists(dataPath))
+            await process.WaitForExitAsync();
+
+            if (process.ExitCode != 0)
             {
-                return NotFound($"Database file not found: {dataPath}");
+                _logger.LogError("manual_updater.py exited with code {Code}: {Error}", process.ExitCode, error);
+                return StatusCode(500, $"Search failed: {error}");
             }
 
-            var json = await System.IO.File.ReadAllTextAsync(dataPath);
-            var data = JObject.Parse(json);
-            var seriesArray = data["series"] as JArray;
-
-            if (seriesArray == null)
+            // Parse JSON output
+            var result = JObject.Parse(output);
+            if (result["success"]?.Value<bool>() != true)
             {
-                return Ok(new List<SeriesInfo>());
+                var errorMsg = result["error"]?.ToString() ?? "Unknown error";
+                return StatusCode(500, errorMsg);
             }
 
             var seriesList = new List<SeriesInfo>();
+            var seriesArray = result["series"] as JArray;
 
-            foreach (var series in seriesArray)
+            if (seriesArray != null)
             {
-                var name = series["name"]?.ToString() ?? "Unknown";
-                var jellyfinName = series["jellyfin_name"]?.ToString() ?? name;
-                var url = series["url"]?.ToString() ?? "";
-
-                var seasons = series["seasons"] as JObject;
-                var seasonCount = seasons?.Count ?? 0;
-
-                var totalEpisodes = 0;
-                if (seasons != null)
+                foreach (var series in seriesArray)
                 {
-                    foreach (var season in seasons)
+                    seriesList.Add(new SeriesInfo
                     {
-                        var seasonData = season.Value as JObject;
-                        var episodes = seasonData?["episodes"] as JObject;
-                        totalEpisodes += episodes?.Count ?? 0;
-                    }
+                        Name = series["name"]?.ToString() ?? "",
+                        JellyfinName = series["jellyfin_name"]?.ToString() ?? "",
+                        Url = series["url"]?.ToString() ?? "",
+                        Site = site,
+                        SeasonCount = series["season_count"]?.Value<int>() ?? 0,
+                        EpisodeCount = series["episode_count"]?.Value<int>() ?? 0
+                    });
                 }
-
-                seriesList.Add(new SeriesInfo
-                {
-                    Name = name,
-                    JellyfinName = jellyfinName,
-                    Url = url,
-                    Site = site,
-                    SeasonCount = seasonCount,
-                    EpisodeCount = totalEpisodes
-                });
             }
 
-            return Ok(seriesList.OrderBy(s => s.Name).ToList());
+            _logger.LogInformation("Found {Count} series matching '{Query}'", seriesList.Count, query);
+
+            return Ok(seriesList);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error loading series list");
+            _logger.LogError(ex, "Error searching series");
             return StatusCode(500, ex.Message);
         }
     }

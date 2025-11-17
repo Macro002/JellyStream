@@ -1,13 +1,14 @@
 # JellyStream Jellyfin Plugin
 
-Manual updater plugin for Aniworld and SerienStream series.
+Jellyfin plugin interface for the manual_updater.py script.
 
 ## Features
 
-- **Manual Series Updater**: Plugin interface to update series streams on-demand
-- **Python Script Integration**: Uses existing Python scrapers from /opt/JellyStream
+- **Simple Wrapper**: Calls `utils/manual_updater.py` in plugin mode
+- **Search Interface**: Search for series via Jellyfin UI
+- **One-Click Updates**: Update series streams on-demand
 - **Dual Site Support**: Works with both Aniworld and SerienStream
-- **Automatic .strm Regeneration**: Updates database and regenerates .strm files in one click
+- **Automatic Everything**: All scraping, database updates, and .strm regeneration handled by Python script
 
 ## Building the Plugin
 
@@ -66,25 +67,34 @@ This will create a DLL at: `bin/Release/net8.0/JellyStream.dll`
 
 ## How It Works
 
-### Update Flow
-
-1. User selects series from plugin UI in Jellyfin
-2. Plugin finds series in database at /opt/JellyStream
-3. Creates temporary catalog with single series
-4. Runs Python scraper scripts sequentially:
-   - `2_url_season_episode_num.py` - Analyzes season/episode structure
-   - `3_language_streamurl.py` - Extracts stream URLs and languages
-   - `4_json_structurer.py` - Structures the data
-5. Updates the series entry in main database
-6. Regenerates .strm files in /media/jellyfin/{site}/
-7. Returns success status to UI
-
 ### Architecture
 
-- **Plugin**: C# Jellyfin plugin (this project)
-- **Scrapers**: Python scripts at /opt/JellyStream/sites/{site}/
-- **Database**: JSON files at /opt/JellyStream/sites/{site}/data/
-- **Media Files**: .strm files at /media/jellyfin/{site}/
+The plugin is a **thin wrapper** around `manual_updater.py`:
+
+```
+Jellyfin UI → Plugin API → manual_updater.py → Database + .strm files
+```
+
+### Update Flow
+
+1. User searches for series in Jellyfin plugin UI
+2. Plugin calls: `python3 manual_updater.py --plugin --site X --search "query"`
+3. User clicks "Update" on a series
+4. Plugin calls: `python3 manual_updater.py --plugin --site X --series-name "Name" --json`
+5. `manual_updater.py` handles everything:
+   - Runs Python scraper scripts (2, 3, 4)
+   - Updates database
+   - Regenerates .strm files
+   - Returns JSON result
+6. Plugin parses JSON and shows result in UI
+
+### Files
+
+- **Plugin**: `/var/lib/jellyfin/plugins/JellyStream_1.0.0.0/` (C#)
+- **Script**: `/opt/JellyStream/utils/manual_updater.py` (Python)
+- **Scrapers**: `/opt/JellyStream/sites/{site}/` (Python)
+- **Database**: `/opt/JellyStream/sites/{site}/data/final_series_data.json`
+- **Media**: `/media/jellyfin/{site}/` (.strm files)
 
 ## Development
 
@@ -96,9 +106,8 @@ JellyStream/
 ├── Configuration/
 │   └── PluginConfiguration.cs     # Settings model (paths)
 ├── Api/
-│   ├── SeriesController.cs        # List series endpoint
-│   ├── UpdateController.cs        # Update series endpoint (calls Python)
-│   └── StrmRegenerator.cs         # .strm file generator
+│   ├── SeriesController.cs        # Search endpoint → calls manual_updater.py
+│   └── UpdateController.cs        # Update endpoint → calls manual_updater.py
 └── Web/
     ├── index.html                 # Plugin UI
     ├── jellystream.js             # Frontend logic
@@ -107,8 +116,10 @@ JellyStream/
 
 ### API Endpoints
 
-- `GET /JellyStream/Series/List?site={aniworld|serienstream}` - Get all series
+- `GET /JellyStream/Series/Search?site={site}&query={text}` - Search for series
 - `POST /JellyStream/Update/Series?name={name}&site={site}` - Update a series
+
+Both endpoints call `manual_updater.py` with appropriate flags.
 
 ## Troubleshooting
 
