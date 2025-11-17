@@ -568,8 +568,8 @@ def plugin_mode():
 
     parser = argparse.ArgumentParser(description='Manual Series Updater - Plugin Mode')
     parser.add_argument('--plugin', action='store_true', help='Enable plugin mode (non-interactive)')
-    parser.add_argument('--site', choices=['aniworld', 'serienstream'], required=True, help='Site name')
-    parser.add_argument('--series-name', required=True, help='Series jellyfin_name or name to update')
+    parser.add_argument('--site', choices=['aniworld', 'serienstream'], help='Site name')
+    parser.add_argument('--series-name', help='Series jellyfin_name or name to update')
     parser.add_argument('--list-series', action='store_true', help='List all series as JSON')
     parser.add_argument('--search', help='Search for series (returns JSON)')
     parser.add_argument('--json', action='store_true', help='Output as JSON for plugin consumption')
@@ -583,6 +583,11 @@ def plugin_mode():
 
     # Plugin mode - handle commands
     try:
+        # Validate site is provided in plugin mode
+        if not args.site:
+            print(json.dumps({"success": False, "error": "Site is required in plugin mode"}))
+            sys.exit(1)
+
         # Load database
         data, db_path = load_database(args.site)
         if not data:

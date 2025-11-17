@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 
 namespace Jellyfin.Plugin.JellyStream.Api;
 
+[Authorize(Policy = "RequiresElevation")]
 [ApiController]
 [Route("JellyStream/Series")]
 public class SeriesController : ControllerBase
