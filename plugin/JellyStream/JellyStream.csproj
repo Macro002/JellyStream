@@ -21,11 +21,5 @@
     </PackageReference>
   </ItemGroup>
 
-  <ItemGroup>
-    <EmbeddedResource Include="Web/index.html" />
-    <EmbeddedResource Include="Web/jellystream.js" />
-    <EmbeddedResource Include="Web/jellystream.css" />
-    <EmbeddedResource Include="Configuration/configPage.html" />
-  </ItemGroup>
 
 </Project>
