@@ -10,3 +10,4 @@ __pycache__/
 !.gitkeep
 
 *.updater_backup
+*.backup

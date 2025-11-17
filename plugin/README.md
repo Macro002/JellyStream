@@ -4,8 +4,8 @@ Manual updater plugin for Aniworld and SerienStream series.
 
 ## Features
 
-- **Manual Series Updater**: Web UI to update series streams on-demand
-- **Native C# Implementation**: No Python dependencies, all scraping logic ported to C#
+- **Manual Series Updater**: Plugin interface to update series streams on-demand
+- **Python Script Integration**: Uses existing Python scrapers from /opt/JellyStream
 - **Dual Site Support**: Works with both Aniworld and SerienStream
 - **Automatic .strm Regeneration**: Updates database and regenerates .strm files in one click
 
@@ -15,6 +15,8 @@ Manual updater plugin for Aniworld and SerienStream series.
 
 - .NET 8.0 SDK
 - Jellyfin 10.9.x
+- Python 3.11+ with dependencies (already installed on Jellyfin server)
+- JellyStream project at /opt/JellyStream on Jellyfin server
 
 ### Build Steps
 
@@ -66,18 +68,23 @@ This will create a DLL at: `bin/Release/net8.0/JellyStream.dll`
 
 ### Update Flow
 
-1. Loads series database from JSON file
-2. Scrapes all episodes from the source site
-3. Extracts new stream URLs and languages
-4. Updates database with new stream data
-5. Regenerates .strm files with fresh redirect IDs
-6. Shows summary of updated episodes
+1. User selects series from plugin UI in Jellyfin
+2. Plugin finds series in database at /opt/JellyStream
+3. Creates temporary catalog with single series
+4. Runs Python scraper scripts sequentially:
+   - `2_url_season_episode_num.py` - Analyzes season/episode structure
+   - `3_language_streamurl.py` - Extracts stream URLs and languages
+   - `4_json_structurer.py` - Structures the data
+5. Updates the series entry in main database
+6. Regenerates .strm files in /media/jellyfin/{site}/
+7. Returns success status to UI
 
-### Scraping Logic
+### Architecture
 
-- **Aniworld**: Scrapes from `aniworld.to`, extracts language mappings and hoster links
-- **SerienStream**: Scrapes from `serienstream.to`, similar extraction logic
-- **Language Priority**: Deutsch → German Sub → English Sub (configurable in code)
+- **Plugin**: C# Jellyfin plugin (this project)
+- **Scrapers**: Python scripts at /opt/JellyStream/sites/{site}/
+- **Database**: JSON files at /opt/JellyStream/sites/{site}/data/
+- **Media Files**: .strm files at /media/jellyfin/{site}/
 
 ## Development
 
@@ -87,13 +94,10 @@ This will create a DLL at: `bin/Release/net8.0/JellyStream.dll`
 JellyStream/
 ├── Plugin.cs                      # Main plugin entry point
 ├── Configuration/
-│   └── PluginConfiguration.cs     # Settings model
+│   └── PluginConfiguration.cs     # Settings model (paths)
 ├── Api/
 │   ├── SeriesController.cs        # List series endpoint
-│   └── UpdateController.cs        # Update series endpoint
-├── Scrapers/
-│   ├── AniworldUpdater.cs         # Aniworld scraping logic
-│   ├── SerienstreamUpdater.cs     # SerienStream scraping logic
+│   ├── UpdateController.cs        # Update series endpoint (calls Python)
 │   └── StrmRegenerator.cs         # .strm file generator
 └── Web/
     ├── index.html                 # Plugin UI
