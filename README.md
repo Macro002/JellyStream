@@ -106,6 +106,12 @@ JellyStream/
 ├── utils/                   # Shared utilities
 │   └── manual_updater.py   # Interactive CLI for updating series
 │
+├── plugin/                  # Jellyfin plugin (optional)
+│   └── JellyStream/        # Native Jellyfin plugin for UI-based updates
+│       ├── Api/            # REST API controllers
+│       ├── Configuration/  # Plugin settings and web UI
+│       └── README.md       # Plugin documentation
+│
 ├── backup/                  # Database backups (not in git)
 │
 └── docs/                    # Documentation
@@ -181,6 +187,26 @@ systemctl restart jellyfin
 ```
 
 See [docs/JELLYFIN_STACK_FIX.md](docs/JELLYFIN_STACK_FIX.md) for details.
+
+### 4. Jellyfin Plugin (Optional)
+
+A native Jellyfin plugin is available for updating series directly from the Jellyfin UI without using the command line.
+
+**Features:**
+- 🔍 Search series from Aniworld and SerienStream
+- 🔄 Update individual series with latest episodes
+- 📊 Real-time log streaming during updates
+- 🔒 Secure (requires admin authentication)
+
+**Installation:**
+
+Via Jellyfin Repository (Recommended):
+1. Dashboard → Plugins → Repositories
+2. Add: `https://raw.githubusercontent.com/Macro002/JellyStream/main/manifest.json`
+3. Catalog → Install "JellyStream"
+4. Restart Jellyfin
+
+See [plugin/README.md](plugin/README.md) for detailed documentation, manual installation, and configuration.
 
 ## Quick Start
 
