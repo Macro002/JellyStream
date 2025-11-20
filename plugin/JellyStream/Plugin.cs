@@ -1,12 +1,14 @@
 using System;
+using System.Collections.Generic;
 using Jellyfin.Plugin.JellyStream.Configuration;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
+using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
 
 namespace Jellyfin.Plugin.JellyStream;
 
-public class Plugin : BasePlugin<PluginConfiguration>
+public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 {
     public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer)
         : base(applicationPaths, xmlSerializer)
@@ -21,4 +23,16 @@ public class Plugin : BasePlugin<PluginConfiguration>
     public override string Description => "Manual stream updater for Aniworld and SerienStream";
 
     public static Plugin? Instance { get; private set; }
+
+    public IEnumerable<PluginPageInfo> GetPages()
+    {
+        return new[]
+        {
+            new PluginPageInfo
+            {
+                Name = this.Name,
+                EmbeddedResourcePath = "Jellyfin.Plugin.JellyStream.Configuration.configPage.html"
+            }
+        };
+    }
 }

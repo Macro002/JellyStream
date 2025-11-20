@@ -1,14 +1,15 @@
-# JellyStream Jellyfin Plugin
+# JellyStream Plugin
 
-Jellyfin plugin interface for the manual_updater.py script.
+A Jellyfin plugin for searching and updating series from Aniworld and SerienStream.
 
 ## Features
 
-- **Simple Wrapper**: Calls `utils/manual_updater.py` in plugin mode
-- **Search Interface**: Search for series via Jellyfin UI
-- **One-Click Updates**: Update series streams on-demand
+- 🔍 Search for series from Aniworld and SerienStream
+- 🔄 Update individual series with latest episodes
+- 📊 Real-time log streaming during updates
+- ⚡ Live progress updates in the UI
+- 🎯 Simple and clean interface
 - **Dual Site Support**: Works with both Aniworld and SerienStream
-- **Automatic Everything**: All scraping, database updates, and .strm regeneration handled by Python script
 
 ## Building the Plugin
 
@@ -31,39 +32,33 @@ This will create a DLL at: `bin/Release/net8.0/JellyStream.dll`
 
 ## Installation
 
-1. **Build the plugin** (see above)
+### Method 1: Via Jellyfin Repository (Recommended)
 
-2. **Copy to Jellyfin plugins directory:**
-   ```bash
-   # On Debian/Ubuntu
-   sudo mkdir -p /var/lib/jellyfin/plugins/JellyStream
-   sudo cp bin/Release/net8.0/* /var/lib/jellyfin/plugins/JellyStream/
-   ```
+1. Open Jellyfin Dashboard → Plugins → Repositories
+2. Add repository URL: `https://raw.githubusercontent.com/Macro002/JellyStream/main/manifest.json`
+3. Go to Catalog
+4. Find "JellyStream" and click Install
+5. Restart Jellyfin
 
-3. **Restart Jellyfin:**
-   ```bash
-   sudo systemctl restart jellyfin
-   ```
+### Method 2: Manual Installation
 
-4. **Configure the plugin:**
-   - Go to Jellyfin Dashboard → Plugins → JellyStream
-   - Verify paths are correct:
-     - Aniworld Data: `/opt/JellyStream/sites/aniworld/data/final_series_data.json`
-     - SerienStream Data: `/opt/JellyStream/sites/serienstream/data/final_series_data.json`
-     - Aniworld Jellyfin Path: `/media/jellyfin/aniworld`
-     - SerienStream Jellyfin Path: `/media/jellyfin/serienstream`
+1. Download the latest release from [GitHub Releases](https://github.com/Macro002/JellyStream/releases)
+2. Extract to your Jellyfin plugins folder: `/var/lib/jellyfin/plugins/JellyStream/`
+3. Restart Jellyfin
+
+## Configuration
+
+After installation, go to Jellyfin Dashboard → Plugins → JellyStream:
+
+- **Script Path**: Path to the manual_updater.py script (default: `/opt/JellyStream/utils/manual_updater.py`)
 
 ## Usage
 
-1. Navigate to: **Dashboard → Plugins → JellyStream**
-
+1. Navigate to Plugins → JellyStream
 2. Select site (Aniworld or SerienStream)
-
-3. Search for the series you want to update
-
-4. Click **Update Series** button
-
-5. Wait for completion (shows progress and results)
+3. Enter series name and click Search
+4. Click Update on any series to update it
+5. Watch the live logs as the update progresses
 
 ## How It Works
 
@@ -118,8 +113,15 @@ JellyStream/
 
 - `GET /JellyStream/Series/Search?site={site}&query={text}` - Search for series
 - `POST /JellyStream/Update/Series?name={name}&site={site}` - Update a series
+- `GET /JellyStream/Update/Logs?key={logKey}` - Get live update logs
 
-Both endpoints call `manual_updater.py` with appropriate flags.
+Both update endpoints call `manual_updater.py` with appropriate flags.
+
+## Requirements
+
+- Jellyfin 10.9.0 or higher
+- Python 3.x
+- JellyStream manual_updater.py script installed at `/opt/JellyStream/utils/manual_updater.py`
 
 ## Troubleshooting
 
@@ -129,14 +131,10 @@ Both endpoints call `manual_updater.py` with appropriate flags.
 - Ensure file permissions are correct
 
 **Update fails:**
-- Check that database paths are correct in plugin settings
+- Check that the script path is correct in plugin settings
 - Verify network connectivity to aniworld.to / serienstream.to
 - Check Jellyfin logs for detailed error messages
-
-**No .strm files created:**
-- Verify Jellyfin media paths are correct
-- Check file system permissions
-- Ensure redirect IDs are being extracted correctly
+- Watch the live logs in the UI for specific errors
 
 ## License
 

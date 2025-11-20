@@ -28,12 +28,15 @@ public class SeriesController : ControllerBase
     {
         try
         {
+            var config = Plugin.Instance?.Configuration;
+            var scriptPath = config?.ScriptPath ?? "/opt/JellyStream/utils/manual_updater.py";
+
             _logger.LogInformation("Searching for series: {Query} on {Site}", query, site);
 
             var psi = new ProcessStartInfo
             {
                 FileName = "python3",
-                Arguments = $"/opt/JellyStream/utils/manual_updater.py --plugin --site {site} --search \"{query}\"",
+                Arguments = $"{scriptPath} --plugin --json --site {site} --search \"{query}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,

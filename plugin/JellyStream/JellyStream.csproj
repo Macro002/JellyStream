@@ -21,5 +21,10 @@
     </PackageReference>
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Configuration/configPage.html">
+      <LogicalName>Jellyfin.Plugin.JellyStream.Configuration.configPage.html</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
 
 </Project>

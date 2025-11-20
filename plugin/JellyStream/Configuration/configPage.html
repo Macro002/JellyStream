@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JellyStream</title>
+    <style>
+        .sectionTitle {
+            margin: 2em 0 1em;
+            font-size: 1.2em;
+            font-weight: 500;
+        }
+        .searchContainer {
+            display: flex;
+            gap: 1em;
+            align-items: flex-end;
+            margin-bottom: 2em;
+        }
+        .searchContainer > div {
+            flex: 1;
+        }
+        .seriesItem {
+            padding: 0.75em 1em;
+            margin-bottom: 0.5em;
+            background: rgba(255,255,255,0.05);
+            border-radius: 4px;
+            position: relative;
+            min-height: 3em;
+        }
+        .seriesInfo {
+            display: inline-block;
+            font-size: 0.95em;
+            vertical-align: middle;
+            max-width: calc(100% - 120px);
+        }
+        .seriesItem button {
+            float: right;
+            display: inline-block !important;
+            margin-left: 1.5em;
+        }
+        .updateStatus {
+            padding: 1em;
+            margin: 1em 0;
+            border-radius: 4px;
+        }
+        .statusSuccess {
+            background: rgba(0, 255, 0, 0.1);
+            border: 1px solid rgba(0, 255, 0, 0.3);
+        }
+        .statusError {
+            background: rgba(255, 0, 0, 0.1);
+            border: 1px solid rgba(255, 0, 0, 0.3);
+        }
+        .statusInfo {
+            background: rgba(0, 150, 255, 0.1);
+            border: 1px solid rgba(0, 150, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div id="JellyStreamConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="JellyStreamConfigForm">
+                    <h2 class="sectionTitle">Configuration</h2>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtScriptPath">Script Path</label>
+                        <input id="txtScriptPath" name="txtScriptPath" type="text" is="emby-input" />
+                        <div class="fieldDescription">Path to manual_updater.py script (default: /opt/JellyStream/utils/manual_updater.py)</div>
+                    </div>
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                            <span>Save Configuration</span>
+                        </button>
+                    </div>
+                </form>
+
+                <h2 class="sectionTitle">Search and Update Series</h2>
+                <div class="searchContainer">
+                    <div class="selectContainer">
+                        <label class="selectLabel" for="selectSite">Site</label>
+                        <select is="emby-select" id="selectSite" name="selectSite">
+                            <option value="aniworld">Aniworld</option>
+                            <option value="serienstream">SerienStream</option>
+                        </select>
+                    </div>
+                    <div class="inputContainer">
+                        <label class="inputLabel inputLabelUnfocused" for="txtSearch">Series Name</label>
+                        <input id="txtSearch" name="txtSearch" type="text" is="emby-input" />
+                    </div>
+                    <div>
+                        <button is="emby-button" id="btnSearch" class="raised button-submit emby-button">
+                            <span>Search</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="updateStatus" style="display: none;"></div>
+                <div id="searchResults"></div>
+            </div>
+        </div>
+        <script type="text/javascript">
+            var JellyStreamConfig = {
+                pluginUniqueId: 'a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d'
+            };
+
+            function displaySearchResults(series, site) {
+                var container = document.querySelector('#searchResults');
+
+                if (!series || series.length === 0) {
+                    container.innerHTML = '<p>No series found.</p>';
+                    return;
+                }
+
+                var html = '<h3>Found ' + series.length + ' series:</h3>';
+
+                series.forEach(function (item) {
+                    html += '<div class="seriesItem">';
+                    html += '<button is="emby-button" class="raised button-submit emby-button" onclick="updateSeries(\'' +
+                        item.JellyfinName.replace(/'/g, "\\'") + '\', \'' + site + '\')">Update</button>';
+                    html += '<span class="seriesInfo">';
+                    html += item.Name + ' | S: ' + item.SeasonCount + ' | Ep: ' + item.EpisodeCount;
+                    html += '</span>';
+                    html += '</div>';
+                });
+
+                container.innerHTML = html;
+            }
+
+            var logPollInterval = null;
+
+            function updateSeries(name, site) {
+                Dashboard.showLoadingMsg();
+
+                var statusDiv = document.querySelector('#updateStatus');
+                statusDiv.style.display = 'block';
+                statusDiv.className = 'updateStatus statusInfo';
+                statusDiv.innerHTML = 'Starting update for "' + name + '"...<br><pre id="updateLogs" style="margin-top: 1em; max-height: 400px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 1em; border-radius: 4px;"></pre>';
+
+                var url = ApiClient.getUrl('JellyStream/Update/Series', {
+                    name: name,
+                    site: site
+                });
+
+                ApiClient.fetch({
+                    url: url,
+                    type: 'POST'
+                })
+                .then(function(response) {
+                    return response.json();
+                })
+                .then(function (result) {
+                    Dashboard.hideLoadingMsg();
+
+                    // Start polling for logs
+                    if (logPollInterval) {
+                        clearInterval(logPollInterval);
+                    }
+
+                    logPollInterval = setInterval(function() {
+                        pollLogs(result.LogKey);
+                    }, 1000);
+                })
+                .catch(function (error) {
+                    Dashboard.hideLoadingMsg();
+                    statusDiv.className = 'updateStatus statusError';
+                    statusDiv.innerHTML = '❌ Update failed. Check Jellyfin logs for details.';
+                });
+            }
+
+            function pollLogs(logKey) {
+                var url = ApiClient.getUrl('JellyStream/Update/Logs', { key: logKey });
+
+                ApiClient.fetch({
+                    url: url,
+                    type: 'GET'
+                })
+                .then(function(response) {
+                    return response.json();
+                })
+                .then(function(result) {
+                    var logsDiv = document.querySelector('#updateLogs');
+                    if (logsDiv && result.Logs) {
+                        logsDiv.textContent = result.Logs;
+                        logsDiv.scrollTop = logsDiv.scrollHeight;
+
+                        // Stop polling if we see completion message
+                        if (result.Logs.includes('✅ Update completed') || result.Logs.includes('❌ Process exited')) {
+                            if (logPollInterval) {
+                                clearInterval(logPollInterval);
+                                logPollInterval = null;
+                            }
+                        }
+                    }
+                })
+                .catch(function(error) {
+                    console.error('Error polling logs:', error);
+                });
+            }
+
+            window.updateSeries = updateSeries;
+
+            document.querySelector('#JellyStreamConfigPage')
+                .addEventListener('pageshow', function() {
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(JellyStreamConfig.pluginUniqueId).then(function (config) {
+                        document.querySelector('#txtScriptPath').value = config.ScriptPath || '';
+                        Dashboard.hideLoadingMsg();
+                    });
+                });
+
+            document.querySelector('#JellyStreamConfigForm')
+                .addEventListener('submit', function(e) {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(JellyStreamConfig.pluginUniqueId).then(function (config) {
+                    config.ScriptPath = document.querySelector('#txtScriptPath').value;
+                    ApiClient.updatePluginConfiguration(JellyStreamConfig.pluginUniqueId, config).then(function (result) {
+                        Dashboard.processPluginConfigurationUpdateResult(result);
+                    });
+                });
+
+                e.preventDefault();
+                return false;
+            });
+
+            document.querySelector('#btnSearch').addEventListener('click', function() {
+                var site = document.querySelector('#selectSite').value;
+                var query = document.querySelector('#txtSearch').value.trim();
+
+                if (!query) {
+                    Dashboard.alert('Please enter a series name to search');
+                    return;
+                }
+
+                Dashboard.showLoadingMsg();
+                document.querySelector('#searchResults').innerHTML = '';
+                document.querySelector('#updateStatus').style.display = 'none';
+
+                var url = ApiClient.getUrl('JellyStream/Series/Search', {
+                    site: site,
+                    query: query
+                });
+
+                ApiClient.fetch({
+                    url: url,
+                    type: 'GET'
+                })
+                .then(function(response) {
+                    return response.json();
+                })
+                .then(function (result) {
+                    Dashboard.hideLoadingMsg();
+                    console.log('Search result:', result);
+                    console.log('Result type:', typeof result, 'Is array:', Array.isArray(result));
+                    if (result && result.series) {
+                        displaySearchResults(result.series, site);
+                    } else if (Array.isArray(result)) {
+                        displaySearchResults(result, site);
+                    } else {
+                        Dashboard.alert('Unexpected response format');
+                    }
+                })
+                .catch(function (error) {
+                    Dashboard.hideLoadingMsg();
+                    console.error('Search error:', error);
+                    Dashboard.alert('Search failed: ' + error.message);
+                });
+            });
+        </script>
+    </div>
+</body>
+</html>

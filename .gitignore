@@ -11,3 +11,8 @@ __pycache__/
 
 *.updater_backup
 *.backup
+
+# Plugin builds
+plugin/JellyStream/bin/
+plugin/JellyStream/obj/
+releases/

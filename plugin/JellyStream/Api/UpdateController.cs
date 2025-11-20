@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -14,6 +16,7 @@ namespace Jellyfin.Plugin.JellyStream.Api;
 public class UpdateController : ControllerBase
 {
     private readonly ILogger<UpdateController> _logger;
+    private static readonly ConcurrentDictionary<string, StringBuilder> _updateLogs = new();
 
     public UpdateController(ILogger<UpdateController> logger)
     {
@@ -33,6 +36,9 @@ public class UpdateController : ControllerBase
                 return BadRequest("Plugin not configured");
             }
 
+            var logKey = $"{site}:{name}";
+            _updateLogs[logKey] = new StringBuilder();
+
             _logger.LogInformation("Starting background update for series: {Name} from {Site}", name, site);
 
             // Start the update in the background so we don't timeout
@@ -40,18 +46,23 @@ public class UpdateController : ControllerBase
             {
                 try
                 {
-                    await CallManualUpdater(name, site);
+                    await CallManualUpdater(name, site, logKey);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Background task error for {Name}", name);
+                    if (_updateLogs.TryGetValue(logKey, out var log))
+                    {
+                        log.AppendLine($"❌ Error: {ex.Message}");
+                    }
                 }
             });
 
             // Return immediately with accepted status
             return Ok(new UpdateResult
             {
-                Message = $"Update started for '{name}'. This will run in the background and may take several minutes. Check the Jellyfin logs for progress."
+                Message = $"Update started for '{name}'. Logs will appear below.",
+                LogKey = logKey
             });
         }
         catch (Exception ex)
@@ -61,14 +72,27 @@ public class UpdateController : ControllerBase
         }
     }
 
-    private async Task CallManualUpdater(string seriesName, string site)
+    [HttpGet("Logs")]
+    public ActionResult<LogResult> GetLogs([FromQuery] string key)
+    {
+        if (_updateLogs.TryGetValue(key, out var log))
+        {
+            return Ok(new LogResult { Logs = log.ToString() });
+        }
+        return NotFound();
+    }
+
+    private async Task CallManualUpdater(string seriesName, string site, string logKey)
     {
         try
         {
+            var config = Plugin.Instance?.Configuration;
+            var scriptPath = config?.ScriptPath ?? "/opt/JellyStream/utils/manual_updater.py";
+
             var psi = new ProcessStartInfo
             {
                 FileName = "python3",
-                Arguments = $"/opt/JellyStream/utils/manual_updater.py --plugin --site {site} --series-name \"{seriesName}\" --json",
+                Arguments = $"-u {scriptPath} --plugin --site {site} --series-name \"{seriesName}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -84,43 +108,39 @@ public class UpdateController : ControllerBase
                 return;
             }
 
-            var output = await process.StandardOutput.ReadToEndAsync();
-            var error = await process.StandardError.ReadToEndAsync();
-
-            await process.WaitForExitAsync();
-
-            // Parse JSON output
-            if (!string.IsNullOrWhiteSpace(output))
+            if (!_updateLogs.TryGetValue(logKey, out var logBuilder))
             {
-                try
+                return;
+            }
+
+            // Read output line by line as it comes
+            while (!process.StandardOutput.EndOfStream)
+            {
+                var line = await process.StandardOutput.ReadLineAsync();
+                if (!string.IsNullOrWhiteSpace(line))
                 {
-                    var result = JObject.Parse(output);
-                    if (result["success"]?.Value<bool>() == true)
-                    {
-                        var episodes = result["episodes"]?.Value<int>() ?? 0;
-                        _logger.LogInformation("✅ Update complete for {Name}: {Episodes} episodes", seriesName, episodes);
-                    }
-                    else
-                    {
-                        var errorMsg = result["error"]?.ToString() ?? "Unknown error";
-                        _logger.LogError("❌ Update failed for {Name}: {Error}", seriesName, errorMsg);
-                    }
-                }
-                catch
-                {
-                    // Not JSON, just log it
-                    _logger.LogInformation("Output: {Output}", output);
+                    logBuilder.AppendLine(line);
+                    _logger.LogInformation("{Line}", line);
                 }
             }
 
+            var error = await process.StandardError.ReadToEndAsync();
             if (!string.IsNullOrWhiteSpace(error))
             {
+                logBuilder.AppendLine($"Error: {error}");
                 _logger.LogWarning("Stderr: {Error}", error);
             }
 
+            await process.WaitForExitAsync();
+
             if (process.ExitCode != 0)
             {
+                logBuilder.AppendLine($"❌ Process exited with code {process.ExitCode}");
                 _logger.LogError("manual_updater.py exited with code {Code}", process.ExitCode);
+            }
+            else
+            {
+                logBuilder.AppendLine("✅ Update completed successfully");
             }
         }
         catch (Exception ex)
@@ -133,4 +153,10 @@ public class UpdateController : ControllerBase
 public class UpdateResult
 {
     public string Message { get; set; } = string.Empty;
+    public string LogKey { get; set; } = string.Empty;
+}
+
+public class LogResult
+{
+    public string Logs { get; set; } = string.Empty;
 }
